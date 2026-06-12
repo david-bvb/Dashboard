@@ -13,9 +13,66 @@ from market_lists import (
 
 st.set_page_config(page_title="Davids Trend-Aktien Dashboard", layout="wide")
 
+
+def existing_columns(df, columns):
+    return [col for col in columns if col in df.columns]
+
+
+# ---------------------------------------
+# Start-Hinweis
+# ---------------------------------------
+
+if "disclaimer_accepted" not in st.session_state:
+    st.session_state.disclaimer_accepted = False
+
+if not st.session_state.disclaimer_accepted:
+
+    st.markdown("""
+    <div style="
+        padding:25px;
+        border-radius:15px;
+        background-color:#1e293b;
+        border:1px solid #334155;
+        margin-bottom:20px;
+    ">
+
+    <h1>📈 Willkommen bei Davids Trend-Aktien Dashboard</h1>
+
+    <p style="font-size:18px;">
+    Dieses Dashboard unterstützt bei der Identifikation von
+    Trendaktien, starken Marktphasen und möglichen Trendwenden.
+    </p>
+
+    <ul>
+    <li>📊 Trend-Score & Marktstärke</li>
+    <li>🚀 Minervini-Screener</li>
+    <li>🔄 David-Trendwendescanner</li>
+    <li>📈 RSI, MACD & PVSRA Volumenanalyse</li>
+    <li>🏆 Ranking der stärksten Aktien</li>
+    </ul>
+
+    <p style="color:#cbd5e1;">
+    ⚖️ Ausschließlich zu Informationszwecken.
+    Keine Anlageberatung oder Kaufempfehlung.
+    </p>
+
+    </div>
+    """, unsafe_allow_html=True)
+
+    akzeptiert = st.checkbox(
+        "Ich habe verstanden, dass dieses Tool keine Anlageberatung darstellt und die Nutzung auf eigene Verantwortung erfolgt."
+    )
+
+    if akzeptiert:
+        st.session_state.disclaimer_accepted = True
+        st.rerun()
+
+    st.stop()
+
+
 TOOLTIPS = {
     "Trend-Score": "Bewertet, wie stark der bestehende Aufwärtstrend einer Aktie ist. Grundlage sind u. a. SMA20, SMA50, SMA200, Nähe zum 52-Wochen-Hoch, relative Stärke, RSI und Volumen.",
-    "Umkehr-Score": "Bewertet mögliche bullische Trendwenden auf Tages- und 4-Stunden-Basis. Grundlage sind RSI-Reversal, MACD-Reversal, Marktstruktur und relative Stärke.",
+    "Umkehr-Score": "Bewertet mögliche bullische Trendwenden auf Tages- und 4-Stunden-Basis. Grundlage sind RSI-Reversal, MACD-Reversal, Marktstruktur und PVSRA-Volumenanalyse.",
     "Umkehr-Phase": "Zeigt, ob sich eine mögliche Trendwende bereits konkretisiert oder nur beobachtet werden sollte.",
     "Handlungsstatus": "Leitet aus Trend-Score, Umkehr-Score, RSI und MACD einen praktischen Status ab: kaufnah prüfen, Watchlist, früh beobachten oder kein Signal.",
     "Trendstatus": "Bewertet den aktuellen Haupttrend der Aktie.",
@@ -23,10 +80,11 @@ TOOLTIPS = {
     "Kaufzonen-Check": "Zeigt, ob die Aktie technisch in einer möglichen Einstiegszone liegt.",
     "RSI": "Relative Strength Index. Werte unter 30 gelten oft als überverkauft, Werte über 70 als überkauft. Spannend ist ein RSI, der aus tieferen Bereichen wieder steigt.",
     "MACD": "Moving Average Convergence Divergence. Zeigt Momentum-Veränderungen. Wichtig sind ein weniger negatives Histogramm, Annäherung an die Signallinie und bullische Crossovers.",
-    "SMA": "Simple Moving Average. Ein einfacher gleitender Durchschnitt. SMA50 = Durchschnitt der letzten 50 Handelstage, SMA200 = Durchschnitt der letzten 200 Handelstage.",
-    "PVSRA": "PVSRA bewertet Volumen zusammen mit Price Action. Der Scanner sucht nach auffälligem Volumen, großer Kerzenspanne, bullischem Schlusskurs im oberen Kerzenbereich und grüner Kerze. Dadurch wird geprüft, ob eine mögliche Trendwende durch Volumen bestätigt wird.",
+    "SMA": "Simple Moving Average. SMA50 = Durchschnitt der letzten 50 Handelstage, SMA200 = Durchschnitt der letzten 200 Handelstage.",
+    "PVSRA": "PVSRA bewertet Volumen zusammen mit Price Action. Der Scanner sucht nach auffälligem Volumen, großer Kerzenspanne, bullischem Schlusskurs im oberen Kerzenbereich und grüner Kerze.",
     "Relative Stärke": "Vergleicht die Performance der Aktie mit dem S&P500. Positive Werte bedeuten, dass die Aktie den Markt schlägt."
 }
+
 
 st.sidebar.title("Einstellungen")
 
@@ -56,7 +114,7 @@ st.write(
     "Dieses Dashboard analysiert Aktien nach technischer Trendstärke, relativer Stärke "
     "und möglichen bullischen Trendwendesignalen. Der **Trend-Score** zeigt, wie stark "
     "der bestehende Aufwärtstrend ist. Der **Umkehr-Score** zeigt, ob RSI, MACD, "
-    "4H-Chart und Tageschart auf eine mögliche neue Aufwärtsbewegung hindeuten."
+    "4H-Chart, Tageschart und PVSRA-Volumenanalyse auf eine mögliche neue Aufwärtsbewegung hindeuten."
 )
 
 st.sidebar.write(f"Geladene Symbole: {len(symbols)}")
@@ -71,6 +129,8 @@ if st.sidebar.button("🔄 Jetzt aktualisieren", help="Löscht den Cache und lä
     st.cache_data.clear()
     st.rerun()
 
+st.sidebar.caption("⚖️ Keine Anlageberatung. Nutzung auf eigene Verantwortung.")
+
 
 with st.spinner("Lade aktuelle Marktdaten..."):
     df = load_dashboard_data(tuple(symbols))
@@ -78,6 +138,7 @@ with st.spinner("Lade aktuelle Marktdaten..."):
 if df.empty:
     st.warning("Keine Daten geladen. Bitte prüfe die Terminal-Fehlermeldung in VS Code.")
     st.stop()
+
 
 st.sidebar.subheader("Filter")
 
@@ -116,9 +177,13 @@ search_text = st.sidebar.text_input(
     help="Suche nach Symbol oder Unternehmensnamen."
 )
 
+
 filtered_df = df.copy()
+
 filtered_df = filtered_df[filtered_df["Score"] >= min_score]
-filtered_df = filtered_df[filtered_df["David-Trendwendenscanner"] >= min_david]
+
+if "David-Trendwendenscanner" in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df["David-Trendwendenscanner"] >= min_david]
 
 if only_minervini:
     filtered_df = filtered_df[filtered_df["Minervini"] == "✅ Ja"]
@@ -129,7 +194,7 @@ if only_kaufzone:
 if only_top:
     filtered_df = filtered_df[filtered_df["Score"] >= 80]
 
-if only_david:
+if only_david and "David Ampel" in filtered_df.columns:
     filtered_df = filtered_df[
         filtered_df["David Ampel"].isin([
             "🟢 Kaufnahes Trendwende-Setup",
@@ -137,7 +202,7 @@ if only_david:
         ])
     ]
 
-if only_entry_signal:
+if only_entry_signal and "Einstiegssignal" in filtered_df.columns:
     filtered_df = filtered_df[
         filtered_df["Einstiegssignal"].isin([
             "🟢 Kaufnah prüfen",
@@ -145,7 +210,7 @@ if only_entry_signal:
         ])
     ]
 
-if only_score_and_david:
+if only_score_and_david and "David-Trendwendenscanner" in filtered_df.columns:
     filtered_df = filtered_df[
         (filtered_df["Score"] > 75) &
         (filtered_df["David-Trendwendenscanner"] > 75)
@@ -162,27 +227,35 @@ if filtered_df.empty:
     st.warning("Keine Aktien entsprechen den aktuellen Filtern.")
     st.stop()
 
+
 top_count = len(filtered_df[filtered_df["Score"] >= 80])
 watch_count = len(filtered_df[(filtered_df["Score"] >= 60) & (filtered_df["Score"] < 80)])
 weak_count = len(filtered_df[filtered_df["Score"] < 60])
 
-david_count = len(
-    filtered_df[
-        filtered_df["David Ampel"].isin([
-            "🟢 Kaufnahes Trendwende-Setup",
-            "🟡 Frühe Trendwende"
-        ])
-    ]
-)
+if "David Ampel" in filtered_df.columns:
+    david_count = len(
+        filtered_df[
+            filtered_df["David Ampel"].isin([
+                "🟢 Kaufnahes Trendwende-Setup",
+                "🟡 Frühe Trendwende"
+            ])
+        ]
+    )
+else:
+    david_count = 0
 
-entry_count = len(
-    filtered_df[
-        filtered_df["Einstiegssignal"].isin([
-            "🟢 Kaufnah prüfen",
-            "🟡 Auf Watchlist"
-        ])
-    ]
-)
+if "Einstiegssignal" in filtered_df.columns:
+    entry_count = len(
+        filtered_df[
+            filtered_df["Einstiegssignal"].isin([
+                "🟢 Kaufnah prüfen",
+                "🟡 Auf Watchlist"
+            ])
+        ]
+    )
+else:
+    entry_count = 0
+
 
 col1, col2, col3, col4, col5 = st.columns(5)
 
@@ -191,6 +264,7 @@ col2.metric("👀 Beobachten", watch_count, help="Aktien mit Trend-Score zwische
 col3.metric("❌ Schwach", weak_count, help="Aktien mit Trend-Score unter 60.")
 col4.metric("🧭 Trendwenden", david_count, help=TOOLTIPS["Umkehr-Score"])
 col5.metric("🎯 Handlungssignale", entry_count, help=TOOLTIPS["Handlungsstatus"])
+
 
 st.subheader("🏆 Beste Trendaktien aktuell", help=TOOLTIPS["Trend-Score"])
 
@@ -219,7 +293,9 @@ ranking_columns = [
     "Rel. Stärke 1J vs S&P500"
 ]
 
-top20_anzeige = top20[ranking_columns].rename(
+top20_existing = existing_columns(top20, ranking_columns)
+
+top20_anzeige = top20[top20_existing].rename(
     columns={
         "Score": "Trend-Score",
         "David-Trendwendenscanner": "Umkehr-Score",
@@ -233,6 +309,7 @@ top20_anzeige = top20[ranking_columns].rename(
 )
 
 st.dataframe(top20_anzeige, use_container_width=True)
+
 
 st.subheader("🧭 Beste Trendwende-Setups", help=TOOLTIPS["Umkehr-Score"])
 
@@ -265,12 +342,17 @@ david_columns = [
     "David RS 3M vs S&P500"
 ]
 
-david_table = filtered_df.sort_values(
-    by="David-Trendwendenscanner",
-    ascending=False
-).head(30)
+if "David-Trendwendenscanner" in filtered_df.columns:
+    david_table = filtered_df.sort_values(
+        by="David-Trendwendenscanner",
+        ascending=False
+    ).head(30)
+else:
+    david_table = filtered_df.head(30)
 
-david_anzeige = david_table[david_columns].rename(
+david_existing = existing_columns(david_table, david_columns)
+
+david_anzeige = david_table[david_existing].rename(
     columns={
         "Score": "Trend-Score",
         "David-Trendwendenscanner": "Umkehr-Score",
@@ -283,12 +365,17 @@ david_anzeige = david_table[david_columns].rename(
         "David MACD 4H Score": "MACD 4H",
         "David Struktur 1D Score": "Struktur 1D",
         "David Struktur 4H Score": "Struktur 4H",
+        "David PVSRA 1D Score": "PVSRA 1D",
+        "David PVSRA 4H Score": "PVSRA 4H",
+        "David PVSRA 1D Signal": "PVSRA 1D Signal",
+        "David PVSRA 4H Signal": "PVSRA 4H Signal",
         "David Relative Stärke Score": "Relative Stärke Score",
         "David RS 3M vs S&P500": "Relative Stärke 3M"
     }
 )
 
 st.dataframe(david_anzeige, use_container_width=True)
+
 
 st.subheader("📋 Gesamttabelle", help="Alle berechneten technischen Kennzahlen und Scores.")
 
@@ -306,11 +393,13 @@ gesamt_anzeige = filtered_df.rename(
 
 st.dataframe(gesamt_anzeige, use_container_width=True)
 
+
 st.subheader("📘 Erklärungen zu Scores & Indikatoren")
 
 with st.expander("Erklärungen anzeigen"):
     for key, value in TOOLTIPS.items():
         st.markdown(f"**{key}:** {value}")
+
 
 st.subheader("📊 Einzelanalyse")
 
@@ -368,3 +457,27 @@ if not chart_df.empty:
 
 else:
     st.warning("Für diese Aktie konnten keine Chartdaten geladen werden.")
+
+
+st.divider()
+
+st.caption("""
+⚠️ Haftungsausschluss
+
+Dieses Dashboard dient ausschließlich Informations- und Analysezwecken.
+
+Die dargestellten Rankings, Scores, Trendbewertungen,
+David-Trendwendenscanner-Signale, Kaufzonen und Interpretationen
+werden automatisiert aus historischen Marktdaten berechnet.
+
+Es handelt sich ausdrücklich NICHT um eine Anlageberatung,
+Finanzberatung, Steuerberatung oder Kaufempfehlung.
+
+Die Nutzung erfolgt auf eigene Verantwortung.
+
+Für die Richtigkeit, Vollständigkeit oder Aktualität
+der Daten und Analysen wird keine Gewähr übernommen.
+
+Der Betreiber haftet nicht für Vermögensschäden,
+entgangene Gewinne oder sonstige finanzielle Verluste.
+""")
